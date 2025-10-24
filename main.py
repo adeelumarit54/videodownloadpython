@@ -1,3 +1,117 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+import yt_dlp
+import os
+import uuid
+
+app = FastAPI(title="Adeel Video Downloader")
+
+# ✅ CORS setup
+origins = [
+    "http://localhost:5173",
+    "https://video-downloader-production.up.railway.app",
+    "https://prodownloadfrontend.vercel.app",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ✅ Serve frontend if built
+# frontend_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+# if os.path.exists(frontend_dir):
+#     app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+
+
+@app.get("/")
+def home():
+    return {"message": "Adeel Video Downloader API is running 🚀"}
+
+
+# ✅ Request body
+class VideoRequest(BaseModel):
+    url: str
+
+
+@app.post("/download")
+def download_video(request: VideoRequest):
+    """
+    Download a video from YouTube, TikTok, Instagram, or Facebook
+    """
+    try:
+        url = request.url.strip()
+        if not url:
+            raise HTTPException(status_code=400, detail="No URL provided")
+
+        os.makedirs("downloads", exist_ok=True)
+
+        # ✅ Generate unique filename
+        output_filename = f"{uuid.uuid4()}.mp4"
+        output_path = os.path.join("downloads", output_filename)
+
+        # ✅ Base options (common)
+        ydl_opts = {
+            "outtmpl": output_path,
+            "format": "best[ext=mp4]/best",
+            "quiet": True,
+            "noplaylist": True,
+        }
+
+        # ✅ Handle TikTok separately
+        if "tiktok.com" in url:
+            ydl_opts.update({
+                "user_agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/117.0.0.0 Safari/537.36"
+                ),
+                "cookiefile": None,  # optional: use cookies if private videos
+                "extractor_args": {"tiktok": {"app_version": ["35.5.2"]}},
+            })
+
+        # ✅ YouTube handling
+        elif "youtube.com" in url or "youtu.be" in url:
+            ydl_opts.update({
+                "format": "bestvideo+bestaudio/best",
+                "merge_output_format": "mp4",
+            })
+
+        # ✅ Download video
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        # ✅ Return video file
+        return FileResponse(
+            path=output_path,
+            filename="video.mp4",
+            media_type="video/mp4",
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Download failed: {str(e)}")
+
+
+
+# Serve frontend for other routes
+@app.get("/{full_path:path}")
+def serve_react_app(full_path: str):
+    index_path = os.path.join(frontend_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    else:
+        return {"message": "Frontend not built yet"}
+
+
+
+
+
 # from fastapi import FastAPI, HTTPException
 # from fastapi.middleware.cors import CORSMiddleware
 # from fastapi.responses import FileResponse
@@ -9,7 +123,7 @@
 
 # app = FastAPI(title="Adeel Video Downloader")
 
-# # ✅ CORS setup
+# # ✅ CORS setup (for local + production)
 # origins = [
 #     "http://localhost:5173",
 #     "https://video-downloader-production.up.railway.app",
@@ -24,172 +138,193 @@
 #     allow_headers=["*"],
 # )
 
-# # ✅ Serve frontend if built
-# # frontend_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
-# # if os.path.exists(frontend_dir):
-# #     app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
-
+# # ✅ Serve the built React frontend
+# frontend_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+# if os.path.exists(frontend_dir):
+#     app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
 
 # @app.get("/")
 # def home():
+#     """Health check route"""
 #     return {"message": "Adeel Video Downloader API is running 🚀"}
 
-
-# # ✅ Request body
+# # ✅ Define request body for POST
 # class VideoRequest(BaseModel):
 #     url: str
 
-
 # @app.post("/download")
 # def download_video(request: VideoRequest):
-#     url = request.url.strip()
-#     if not url:
-#         raise HTTPException(status_code=400, detail="No URL provided")
-
-#     # Create downloads folder
-#     os.makedirs("downloads", exist_ok=True)
-
-#     # Unique filename
-#     output_filename = f"{uuid.uuid4()}.mp4"
-#     output_path = os.path.join("downloads", output_filename)
-
-#     # ✅ yt_dlp options
-#     ydl_opts = {
-#         "outtmpl": output_path,
-#         "format": "best[ext=mp4]/best",  # Safe for YouTube without ffmpeg
-#         "quiet": True,
-#         "noplaylist": True,  # Avoid downloading playlists accidentally
-#     }
-
+#     """
+#     Download a video from YouTube, TikTok, Instagram, or Facebook
+#     """
 #     try:
+#         url = request.url.strip()
+#         if not url:
+#             raise HTTPException(status_code=400, detail="No URL provided")
+
+#         os.makedirs("downloads", exist_ok=True)
+
+#         # ✅ Generate unique filename
+#         output_filename = f"{uuid.uuid4()}.mp4"
+#         output_path = os.path.join("downloads", output_filename)
+
+#         # ✅ Base options (common)
+#         ydl_opts = {
+#             "outtmpl": output_path,
+#             "format": "best[ext=mp4]/best",
+#             "quiet": True,
+#             "noplaylist": True,
+#         }
+
+#         # ✅ Handle TikTok separately
+#         if "tiktok.com" in url:
+#             ydl_opts.update({
+#                 "user_agent": (
+#                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+#                     "AppleWebKit/537.36 (KHTML, like Gecko) "
+#                     "Chrome/117.0.0.0 Safari/537.36"
+#                 ),
+#                 "cookiefile": None,  # optional: use cookies if private videos
+#                 "extractor_args": {"tiktok": {"app_version": ["35.5.2"]}},
+#             })
+
+#         # ✅ YouTube handling
+#         elif "youtube.com" in url or "youtu.be" in url:
+#             ydl_opts.update({
+#                 "format": "bestvideo+bestaudio/best",
+#                 "merge_output_format": "mp4",
+#             })
+
+#         # ✅ Download video
 #         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 #             ydl.download([url])
+
+#         # ✅ Return video file
+#         return FileResponse(
+#             path=output_path,
+#             filename="video.mp4",
+#             media_type="video/mp4",
+#         )
+
 #     except Exception as e:
-#         print("YT_DLP ERROR:", str(e))  # Log for debugging
 #         raise HTTPException(status_code=400, detail=f"Download failed: {str(e)}")
 
-#     if not os.path.exists(output_path):
-#         raise HTTPException(status_code=400, detail="Video download failed")
 
-#     return FileResponse(
-#         path=output_path,
-#         filename="video.mp4",
-#         media_type="video/mp4",
-#     )
-
-
-# # # Serve frontend for other routes
-# # @app.get("/{full_path:path}")
-# # def serve_react_app(full_path: str):
-# #     index_path = os.path.join(frontend_dir, "index.html")
-# #     if os.path.exists(index_path):
-# #         return FileResponse(index_path)
-# #     else:
-# #         return {"message": "Frontend not built yet"}
+# # ✅ Serve frontend for all other routes (after build)
+# @app.get("/{full_path:path}")
+# def serve_react_app(full_path: str):
+#     index_path = os.path.join(frontend_dir, "index.html")
+#     if os.path.exists(index_path):
+#         return FileResponse(index_path)
+#     else:
+#         return {"message": "Frontend not built yet"}
 
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-import yt_dlp
-import os
-import uuid
-
-# ✅ Initialize app
-app = FastAPI(title="Adeel Video Downloader")
-
-# ✅ CORS setup (for local + production)
-origins = [
-    "http://localhost:5173",
-    "https://prodownloadfrontend.vercel.app",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # includes OPTIONS for preflight
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-# ✅ Health check route
-@app.get("/")
-def home():
-    """Health check route"""
-    return {"message": "Adeel Video Downloader API is running 🚀"}
-
-# ✅ Define request model
-class VideoRequest(BaseModel):
-    url: str
-
-# ✅ Main download route
-@app.post("/download")
-def download_video(request: VideoRequest):
-    """Download a video from YouTube, TikTok, Instagram, or Facebook"""
-    try:
-        url = request.url.strip()
-        if not url:
-            raise HTTPException(status_code=400, detail="No URL provided")
-
-        os.makedirs("downloads", exist_ok=True)
-
-        # Unique filename for output
-        output_filename = f"{uuid.uuid4()}.mp4"
-        output_path = os.path.join("downloads", output_filename)
-
-        # Base yt_dlp options
-        ydl_opts = {
-            "outtmpl": output_path,
-            "format": "best[ext=mp4]/best",
-            "quiet": True,
-            "noplaylist": True,
-        }
-
-        # TikTok specific handling
-        if "tiktok.com" in url:
-            ydl_opts.update({
-                "user_agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/117.0.0.0 Safari/537.36"
-                ),
-                "extractor_args": {"tiktok": {"app_version": ["35.5.2"]}},
-            })
-
-        # YouTube specific handling
-        elif "youtube.com" in url or "youtu.be" in url:
-            ydl_opts.update({
-                "format": "bestvideo+bestaudio/best",
-                "merge_output_format": "mp4",
-            })
-
-        # ✅ Download video using yt_dlp
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        # ✅ Return file for download
-        return FileResponse(
-            path=output_path,
-            filename="video.mp4",
-            media_type="video/mp4",
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Download failed: {str(e)}")
 
 
-# ✅ Explicit CORS preflight handler (important for Render)
-@app.options("/download")
-async def download_options(request: Request):
-    """Handle CORS preflight for /download"""
-    response = JSONResponse(content={"message": "CORS preflight OK"})
-    response.headers["Access-Control-Allow-Origin"] = "https://prodownloadfrontend.vercel.app"
-    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    return response
+
+# from fastapi import FastAPI, HTTPException, Request
+# from fastapi.middleware.cors import CORSMiddleware
+# from fastapi.responses import FileResponse, JSONResponse
+# from pydantic import BaseModel
+# import yt_dlp
+# import os
+# import uuid
+
+# # ✅ Initialize app
+# app = FastAPI(title="Adeel Video Downloader")
+
+# # ✅ CORS setup (for local + production)
+# origins = [
+#     "http://localhost:5173",
+#     "https://prodownloadfrontend.vercel.app",
+# ]
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=origins,
+#     allow_credentials=True,
+#     allow_methods=["*"],  # includes OPTIONS for preflight
+#     allow_headers=["*"],
+#     expose_headers=["*"],
+# )
+
+# # ✅ Health check route
+# @app.get("/")
+# def home():
+#     """Health check route"""
+#     return {"message": "Adeel Video Downloader API is running 🚀"}
+
+# # ✅ Define request model
+# class VideoRequest(BaseModel):
+#     url: str
+
+# # ✅ Main download route
+# @app.post("/download")
+# def download_video(request: VideoRequest):
+#     """Download a video from YouTube, TikTok, Instagram, or Facebook"""
+#     try:
+#         url = request.url.strip()
+#         if not url:
+#             raise HTTPException(status_code=400, detail="No URL provided")
+
+#         os.makedirs("downloads", exist_ok=True)
+
+#         # Unique filename for output
+#         output_filename = f"{uuid.uuid4()}.mp4"
+#         output_path = os.path.join("downloads", output_filename)
+
+#         # Base yt_dlp options
+#         ydl_opts = {
+#             "outtmpl": output_path,
+#             "format": "best[ext=mp4]/best",
+#             "quiet": True,
+#             "noplaylist": True,
+#         }
+
+#         # TikTok specific handling
+#         if "tiktok.com" in url:
+#             ydl_opts.update({
+#                 "user_agent": (
+#                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+#                     "AppleWebKit/537.36 (KHTML, like Gecko) "
+#                     "Chrome/117.0.0.0 Safari/537.36"
+#                 ),
+#                 "extractor_args": {"tiktok": {"app_version": ["35.5.2"]}},
+#             })
+
+#         # YouTube specific handling
+#         elif "youtube.com" in url or "youtu.be" in url:
+#             ydl_opts.update({
+#                 "format": "bestvideo+bestaudio/best",
+#                 "merge_output_format": "mp4",
+#             })
+
+#         # ✅ Download video using yt_dlp
+#         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+#             ydl.download([url])
+
+#         # ✅ Return file for download
+#         return FileResponse(
+#             path=output_path,
+#             filename="video.mp4",
+#             media_type="video/mp4",
+#         )
+
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Download failed: {str(e)}")
+
+
+# # ✅ Explicit CORS preflight handler (important for Render)
+# @app.options("/download")
+# async def download_options(request: Request):
+#     """Handle CORS preflight for /download"""
+#     response = JSONResponse(content={"message": "CORS preflight OK"})
+#     response.headers["Access-Control-Allow-Origin"] = "https://prodownloadfrontend.vercel.app"
+#     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+#     response.headers["Access-Control-Allow-Headers"] = "*"
+#     response.headers["Access-Control-Allow-Credentials"] = "true"
+#     return response
 
 
 
