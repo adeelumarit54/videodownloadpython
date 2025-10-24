@@ -88,24 +88,20 @@
 # #         return {"message": "Frontend not built yet"}
 
 
-
-
-
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import yt_dlp
 import os
 import uuid
 
+# ✅ Initialize app
 app = FastAPI(title="Adeel Video Downloader")
 
 # ✅ CORS setup (for local + production)
 origins = [
     "http://localhost:5173",
-    "https://video-downloader-production.up.railway.app",
     "https://prodownloadfrontend.vercel.app",
 ]
 
@@ -113,29 +109,25 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],  # includes OPTIONS for preflight
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-# ✅ Serve the built React frontend
-frontend_dir = os.path.join(os.path.dirname(__file__), "../frontend/dist")
-if os.path.exists(frontend_dir):
-    app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
-
+# ✅ Health check route
 @app.get("/")
 def home():
     """Health check route"""
     return {"message": "Adeel Video Downloader API is running 🚀"}
 
-# ✅ Define request body for POST
+# ✅ Define request model
 class VideoRequest(BaseModel):
     url: str
 
+# ✅ Main download route
 @app.post("/download")
 def download_video(request: VideoRequest):
-    """
-    Download a video from YouTube, TikTok, Instagram, or Facebook
-    """
+    """Download a video from YouTube, TikTok, Instagram, or Facebook"""
     try:
         url = request.url.strip()
         if not url:
@@ -143,11 +135,11 @@ def download_video(request: VideoRequest):
 
         os.makedirs("downloads", exist_ok=True)
 
-        # ✅ Generate unique filename
+        # Unique filename for output
         output_filename = f"{uuid.uuid4()}.mp4"
         output_path = os.path.join("downloads", output_filename)
 
-        # ✅ Base options (common)
+        # Base yt_dlp options
         ydl_opts = {
             "outtmpl": output_path,
             "format": "best[ext=mp4]/best",
@@ -155,7 +147,7 @@ def download_video(request: VideoRequest):
             "noplaylist": True,
         }
 
-        # ✅ Handle TikTok separately
+        # TikTok specific handling
         if "tiktok.com" in url:
             ydl_opts.update({
                 "user_agent": (
@@ -163,22 +155,21 @@ def download_video(request: VideoRequest):
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/117.0.0.0 Safari/537.36"
                 ),
-                "cookiefile": None,  # optional: use cookies if private videos
                 "extractor_args": {"tiktok": {"app_version": ["35.5.2"]}},
             })
 
-        # ✅ YouTube handling
+        # YouTube specific handling
         elif "youtube.com" in url or "youtu.be" in url:
             ydl_opts.update({
                 "format": "bestvideo+bestaudio/best",
                 "merge_output_format": "mp4",
             })
 
-        # ✅ Download video
+        # ✅ Download video using yt_dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # ✅ Return video file
+        # ✅ Return file for download
         return FileResponse(
             path=output_path,
             filename="video.mp4",
@@ -189,17 +180,16 @@ def download_video(request: VideoRequest):
         raise HTTPException(status_code=400, detail=f"Download failed: {str(e)}")
 
 
-# ✅ Serve frontend for all other routes (after build)
-@app.get("/{full_path:path}")
-def serve_react_app(full_path: str):
-    index_path = os.path.join(frontend_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    else:
-        return {"message": "Frontend not built yet"}
-
-
-
+# ✅ Explicit CORS preflight handler (important for Render)
+@app.options("/download")
+async def download_options(request: Request):
+    """Handle CORS preflight for /download"""
+    response = JSONResponse(content={"message": "CORS preflight OK"})
+    response.headers["Access-Control-Allow-Origin"] = "https://prodownloadfrontend.vercel.app"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 
 
