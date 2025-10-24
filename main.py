@@ -103,6 +103,7 @@ app = FastAPI(title="Adeel Video Downloader")
 origins = [
     "http://localhost:5173",
     "https://prodownloadfrontend.vercel.app",
+    
 ]
 
 app.add_middleware(
@@ -230,6 +231,7 @@ async def download_options(request: Request):
     """Handle CORS preflight for /download"""
     response = JSONResponse(content={"message": "CORS preflight OK"})
     response.headers["Access-Control-Allow-Origin"] = "https://prodownloadfrontend.vercel.app"
+    
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
     response.headers["Access-Control-Allow-Credentials"] = "true"
